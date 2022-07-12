@@ -1,0 +1,160 @@
+$localpath= get-content env:APPDATA
+#$remotepath= "R:\GPO\modèle_signature"
+$remotepath= "$env:LOGONSERVER\NETLOGON\signatures"
+$defaultphone= "02 33 95 82 00" #numero par défaut si non renseigné dans l'AD
+$defaultaddress= "Mairie de Valognes, Place du General de Gaulle, 50700 VALOGNES" #adresse par défaut si non renseigné dans l'AD
+$defaultweb= "https://www.valognes.fr"
+$disclaimerHTML = "Pensez ENVIRONNEMENT : n'imprimez que si n&eacute;cessaire !"
+$disclaimerTXT = "Pensez ENVIRONNEMENT : n'imprimez que si nécessaire !"	
+$disclaimerRTF = "Pensez ENVIRONNEMENT : n'imprimez que si nécessaire !"
+$groupTest = "Elu"
+
+robocopy /e /r:3 /w:1 $remotepath\ $localpath\Microsoft\Signatures
+
+$sysinfo = New-Object -ComObject "ADSystemInfo"
+$ADpath2=$sysinfo.GetType().InvokeMember("username","Getproperty",$Null,$sysinfo,$Null)
+$info=[ADSI] "LDAP://$ADpath2"
+
+$name=$info.givenName + " " + $info.sn
+$mail=$info.mail
+$tel=$info.IPphone
+$adresse=$info.StreetAddress
+$city=$info.l
+$postalCode=$info.postalCode
+$fulladdress=$adresse+", "+$postalCode+" "+$city #adresse compléte 
+$service=$info.description #service de l'utilisateur
+$fonction=$info.title #fonction de l'utilisateur
+$userName=$info.sAMAccountName
+
+
+$ADGroupObj=(([ADSISearcher] "(&(objectCategory=person)(objectClass=user)(sAMAccountName=$userName))").FindOne().properties.memberof -match "CN=$groupTest,")
+
+if($ADGroupObj -and $ADGroupObj.count -gt 0){
+	$fonction=$info.info
+	$fonctionHTML=$fonction -replace("/","<br>")
+	$fonctionTXTRTF=$fonction -replace("/","`r")
+} else {
+	$fonctionHTML=$fonction
+	$fonctionTXTRTF=$fonction
+}
+
+$webpage=$info.wWWHomePage #page web de l'utilisateur
+
+# On vérifie si la page web de l'utilisateur est vide.
+# Si oui, on définit $webpage avec la valeur par défaut
+# Sinon, on ne fait rien, on conserve $webpage avec la valeur de l'AD
+if($webpage.count -eq 0){
+	$webpage=$defaultweb
+}
+
+# On supprime le "https://" du lien affiché dans la signature par souci esthétique
+$webpage_affiche=$webpage.Substring(8,$webpage.Length -8)
+
+#Personnalisation du fichier HTML
+
+function PersonnalisationHTML ($file)
+	{
+	$Perso = get-content $file
+	$Perso = $Perso -replace "%name%","$name"
+	$Perso = $Perso -replace "%mail%","$mail"
+		if ($tel.count -eq 0){ #si aucun numero n'est renseigné dans l'AD alors utiliser le numero par défaut, sinon utilisé celui renseigné dans telephoneIP
+	$Perso = $Perso -replace "%telephone%","$defaultphone"
+	}Else {
+		$Perso = $Perso -replace "%telephone%","$tel"
+	}
+		if ($fonctionHTML.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
+		$Perso = $Perso -replace "%fonction%"," "
+		}Else {
+		$Perso= $Perso -replace "%fonction%","$fonctionHTML"
+		}
+
+	$Perso = $Perso -replace "%service%","$service" 
+		if ($adresse.count -eq 0){ #si aucune adresse n'est renseigné dans l'adresse dans l'AD alors utilisé l'adresse par defaut sinon, utilisée celle renseignée
+		$Perso = $Perso -replace "%adresse%","$defaultaddress"
+		}Else {
+		$Perso = $Perso -replace "%adresse%","$FullAddress"
+	}
+	$Perso = $Perso -replace "%webpage%","$webpage"
+	$Perso = $Perso -replace "%webpage_affiche%","$webpage_affiche"
+	$Perso = $Perso -replace "%disclaimer%","$disclaimerHTML"
+	
+	set-content $file $Perso #on ecrase le contenu du template par le contenu personnalisé
+}
+
+
+
+#Personnalisation du fichier TXT
+
+function PersonnalisationTXT ($file)
+{
+	$Perso = get-content $file
+	$Perso = $Perso -replace "%name%","$name"
+	$Perso = $Perso -replace "%mail%","$mail"
+		if ($tel.count -eq 0){ #si aucun numero n'est renseigné dans l'AD alors utiliser le numero par défaut, sinon utilisé celui renseigné dans telephoneIP
+	$Perso = $Perso -replace "%telephone%","$defaultphone"
+	}Else {
+		$Perso = $Perso -replace "%telephone%","$tel"
+	}
+		if ($fonctionTXTRTF.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
+		$Perso = $Perso -replace "%fonction%"," "
+		}Else {
+		$Perso= $Perso -replace "%fonction%","$fonctionTXTRTF"
+		}
+
+	$Perso = $Perso -replace "%service%","$service" 
+		if ($adresse.count -eq 0){ #si aucune adresse n'est renseigné dans l'adresse dans l'AD alors utilisé l'adresse par defaut sinon, utilisée celle renseignée
+		$Perso = $Perso -replace "%adresse%","$defaultaddress"
+		}Else {
+		$Perso = $Perso -replace "%adresse%","$FullAddress"
+	}
+	if ($webpage.count -eq 0){
+		$Perso = $Perso -replace "%webpage%","$defaultweb"
+		}Else {
+		$Perso = $Perso -replace "%webpage%","$webpage_affiche"
+		}
+	$Perso = $Perso -replace "%disclaimer%","$disclaimerTXT"	
+	
+	set-content $file $Perso #on ecrase le contenu du template par le contenu personnalisé
+}
+
+#Personnalisation fichier RTF
+
+function PersonnalisationRTF ($file)
+{
+	$Perso = get-content $file
+	$Perso = $Perso -replace "%name%","$name"
+	$Perso = $Perso -replace "%mail%","$mail"
+		if ($tel.count -eq 0){ #si aucun numero n'est renseigné dans l'AD alors utiliser le numero par défaut, sinon utilisé celui renseigné dans telephoneIP
+	$Perso = $Perso -replace "%telephone%","$defaultphone"
+	}Else {
+		$Perso = $Perso -replace "%telephone%","$tel"
+	}
+		if ($fonctionTXTRTF.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
+		$Perso = $Perso -replace "%fonction%"," "
+		}Else {
+		$Perso= $Perso -replace "%fonction%","$fonctionTXTRTF"
+		}
+
+	$Perso = $Perso -replace "%service%","$service" 
+		if ($adresse.count -eq 0){ #si aucune adresse n'est renseigné dans l'adresse dans l'AD alors utilisé l'adresse par defaut sinon, utilisée celle renseignée
+		$Perso = $Perso -replace "%adresse%","$defaultaddress"
+		}Else {
+		$Perso = $Perso -replace "%adresse%","$FullAddress"
+	}
+	if ($webpage.count -eq 0){
+		$Perso = $Perso -replace "%webpage%","$defaultweb"
+		}Else {
+		$Perso = $Perso -replace "%webpage%","$webpage_affiche"
+		}
+	$Perso = $Perso -replace "%disclaimer%","$disclaimerRTF"	
+	
+	set-content $file $Perso #on ecrase le contenu du template par le contenu personnalisé
+}
+
+PersonnalisationHTML ($localpath+ "\Microsoft\Signatures\Signature.htm")
+PersonnalisationTXT ($localpath+ "\microsoft\Signatures\Signature.txt")
+PersonnalisationRTF ($localpath+ "\Microsoft\Signatures\Signature.rtf")
+PersonnalisationHTML ($localpath+ "\microsoft\Signatures\Interne Simple.htm")
+PersonnalisationTXT ($localpath+ "\microsoft\Signatures\Interne Simple.txt")
+PersonnalisationRTF ($localpath+ "\microsoft\Signatures\Interne Simple.rtf")
+
