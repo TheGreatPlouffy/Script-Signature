@@ -1,6 +1,6 @@
 $localpath= get-content env:APPDATA
-#$remotepath= "R:\GPO\modèle_signature"
-$remotepath= "$env:LOGONSERVER\NETLOGON\signatures"
+$remotepath= "R:\GPO\modèle_signature"
+#$remotepath= "$env:LOGONSERVER\NETLOGON\signatures"
 $defaultphone= "02 33 95 82 00" #numero par défaut si non renseigné dans l'AD
 $defaultaddress= "Mairie de Valognes, Place du General de Gaulle, 50700 VALOGNES" #adresse par défaut si non renseigné dans l'AD
 $defaultweb= "https://www.valognes.fr"
@@ -16,9 +16,10 @@ $ADpath2=$sysinfo.GetType().InvokeMember("username","Getproperty",$Null,$sysinfo
 $info=[ADSI] "LDAP://$ADpath2"
 
 $name=$info.givenName + " " + $info.sn
+$nameRTFTXT=$info.givenName+$info.sn
 $mail=$info.mail
 $tel=$info.IPphone
-$adresse=$info.StreetAddress
+$adresse=$info.StreetAddress.Substring(0,$info.StreetAddress.Length)
 $city=$info.l
 $postalCode=$info.postalCode
 $fulladdress=$adresse+", "+$postalCode+" "+$city #adresse compléte 
@@ -26,14 +27,29 @@ $service=$info.description #service de l'utilisateur
 $fonction=$info.title #fonction de l'utilisateur
 $userName=$info.sAMAccountName
 
-
 $ADGroupObj=(([ADSISearcher] "(&(objectCategory=person)(objectClass=user)(sAMAccountName=$userName))").FindOne().properties.memberof -match "CN=$groupTest,")
 
+
+#On recupere la photo de l'elu dans l'AD et on la converti en byte afin d'être utilisable.
+if($ADGroupObj -and $ADGroupObj.count -gt 0){
+	$photo=$info.thumbnailPhoto| Set-Content -PAth C:\Users\$userName\AppData\Roaming\Microsoft\Signatures\Signature_fichiers\elu.jpg -Encoding byte
+}
+	
+#on recupere les informatique du format de l'image de l'elu, et si l'utilisateur n'en fait pas parti nous ne les ajoutons pas au dossier HTML afin que le script ne charge pas une image inexistante.
+#if($ADGroupObj -and $ADGroupObj.count -gt 0){
+	#$parametreimage1 = <v:shape id="Image_x0020_23" o:spid="_x0000_i1050" type="#_x0000_t75" style='width:70.5pt;height:70.5pt;visibility:visible;mso-wrap-style:square'> #parti de l'html paramettrant le format de l'image de l'elu, il faut trouver un moyen de le mettre entre " " pour qu'il puisse être recopier dans le doc HTML sans être concidérer comme une fonction du script powershell
+#	$parametreimage2 = #l'autre partie de l'html paramettrant le format de l'image de l'elu
+#	}Else {
+#	$parametreimage1 = ""
+#	$parametreimage2 = ""
+#	}
+  
 if($ADGroupObj -and $ADGroupObj.count -gt 0){
 	$fonction=$info.info
 	$fonctionHTML=$fonction -replace("/","<br>")
-	$fonctionTXTRTF=$fonction -replace("/","`r")
-} else {
+	$fonctionTXT=$fonction -replace("/","`r")
+	$fonctionRTF=$fonction -replace("/","\par }{\rtlch\fcs1 \af1\afs18 \ltrch\fcs0 \f1\fs18\cf19\insrsid7034660 \hich\af1\dbch\af31505\loch\f1")
+} Else{
 	$fonctionHTML=$fonction
 	$fonctionTXTRTF=$fonction
 }
@@ -77,7 +93,9 @@ function PersonnalisationHTML ($file)
 	$Perso = $Perso -replace "%webpage%","$webpage"
 	$Perso = $Perso -replace "%webpage_affiche%","$webpage_affiche"
 	$Perso = $Perso -replace "%disclaimer%","$disclaimerHTML"
-	
+	$Perso = $Perso -replace "%username%","$userName" #On changer le nom de l'utilisateur pour le chemin de l'image Elu dans l'html afin qu'elles soient bien trouvées
+	#$Perso = $Perso -replace "%image%","$parametreimage1"
+	#$Perso = $Perso -replace "%image2%","$parametreimage2"
 	set-content $file $Perso #on ecrase le contenu du template par le contenu personnalisé
 }
 
@@ -88,17 +106,17 @@ function PersonnalisationHTML ($file)
 function PersonnalisationTXT ($file)
 {
 	$Perso = get-content $file
-	$Perso = $Perso -replace "%name%","$name"
+	$Perso = $Perso -replace "%name%","$nameRTFTXT"
 	$Perso = $Perso -replace "%mail%","$mail"
 		if ($tel.count -eq 0){ #si aucun numero n'est renseigné dans l'AD alors utiliser le numero par défaut, sinon utilisé celui renseigné dans telephoneIP
 	$Perso = $Perso -replace "%telephone%","$defaultphone"
 	}Else {
 		$Perso = $Perso -replace "%telephone%","$tel"
 	}
-		if ($fonctionTXTRTF.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
+		if ($fonctionTXT.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
 		$Perso = $Perso -replace "%fonction%"," "
 		}Else {
-		$Perso= $Perso -replace "%fonction%","$fonctionTXTRTF"
+		$Perso= $Perso -replace "%fonction%","$fonctionTXT"
 		}
 
 	$Perso = $Perso -replace "%service%","$service" 
@@ -122,17 +140,17 @@ function PersonnalisationTXT ($file)
 function PersonnalisationRTF ($file)
 {
 	$Perso = get-content $file
-	$Perso = $Perso -replace "%name%","$name"
+	$Perso = $Perso -replace "%name%","$nameRTFTXT"
 	$Perso = $Perso -replace "%mail%","$mail"
 		if ($tel.count -eq 0){ #si aucun numero n'est renseigné dans l'AD alors utiliser le numero par défaut, sinon utilisé celui renseigné dans telephoneIP
 	$Perso = $Perso -replace "%telephone%","$defaultphone"
 	}Else {
 		$Perso = $Perso -replace "%telephone%","$tel"
 	}
-		if ($fonctionTXTRTF.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
+		if ($fonctionRTF.count -eq 0) { #utilisé la fonction renseignée dans l'AD si aucune n'est renseignée alors supprimer la ligne
 		$Perso = $Perso -replace "%fonction%"," "
 		}Else {
-		$Perso= $Perso -replace "%fonction%","$fonctionTXTRTF"
+		$Perso= $Perso -replace "%fonction%","$fonctionRTF"
 		}
 
 	$Perso = $Perso -replace "%service%","$service" 
